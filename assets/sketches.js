@@ -106,14 +106,14 @@ new p5((p) => {
   let phase = 'grow';      // grow | hold | fade
   let phaseTimer = 0;
   let stepTimer = 0;
-  const STEP_INTERVAL = 30;
+  const STEP_INTERVAL = 32;
   const KMAX = 4;
-  const MAX_DEPTH = 5;       // shallower tree = more vertical headroom
-  const BETA_RATIO = 0.55;
-  const INVALID_RATE = 0.32;
+  const MAX_DEPTH = 5;
+  const BETA_RATIO = 0.5;
+  const INVALID_RATE = 0.30;
   const TOP_PAD = 70;
   const BOT_PAD = 80;
-  const SIDE_PAD = 36;
+  const SIDE_PAD = 30;
 
   p.setup = () => {
     const host = document.getElementById('hero-canvas');
@@ -156,25 +156,27 @@ new p5((p) => {
     return TOP_PAD + (H - TOP_PAD - BOT_PAD) * (d / MAX_DEPTH);
   }
 
-  // Slot-based layout: every parent owns a horizontal range. Its children are
-  // placed evenly within that range, and the active children inherit a sub-slot
-  // so cousins never collide with each other.
+  // Strict slot-based layout. Every parent owns a horizontal range. Every child
+  // it produces is placed inside that range, full stop — never spilling into a
+  // sibling's range. Active children (primary / beta) inherit one of N evenly-
+  // divided sub-slots; inactive children (invalid / pruned) are placed in the
+  // remaining gaps inside the slot.
   function expand() {
     const newLeaves = [];
 
-    // First pass: pick the candidates each leaf will propose so we can pre-count
-    // how many *active* children each leaf will have (primary + betas) and
-    // therefore know its sub-slot width.
+    // First pass: roll candidates and pre-classify so we know how many actives
+    // we'll have globally (needed to respect KMAX).
     const perLeaf = [];
     let projectedActive = 0;
     for (const leaf of activeLeaves) {
       if (leaf.depth >= MAX_DEPTH) { perLeaf.push(null); continue; }
-      const candCount = Math.floor(p.random(3, 5));
+      // Fewer candidates at deeper depths keeps things uncluttered.
+      const maxCands = leaf.depth >= 3 ? 3 : 4;
+      const candCount = Math.floor(p.random(2, maxCands + 0.999));
       const proposals = [];
       for (let i = 0; i < candCount; i++) proposals.push({ valid: p.random() > INVALID_RATE, score: p.random() });
       proposals.sort((a, b) => b.score - a.score);
 
-      // Decide kinds (primary / beta / pruned / invalid)
       let primaryAssigned = false;
       let activeHere = 0;
       for (const q of proposals) {
@@ -190,67 +192,84 @@ new p5((p) => {
       perLeaf.push({ proposals, activeHere });
     }
 
-    // Second pass: place children. The leaf's own slot is subdivided so each
-    // ACTIVE child (primary / beta) gets its own sub-slot; non-active children
-    // (invalid / pruned) hug the primary's column with small offsets so they're
-    // visible without colliding with the next subtree.
+    // Second pass: place. We arrange proposals in a stable order
+    // (active-first), evenly across the parent's slot, then give active
+    // children a tight sub-slot for their own subtree to grow into.
     for (let i = 0; i < activeLeaves.length; i++) {
       const leaf = activeLeaves[i];
       const data = perLeaf[i];
       if (!data) continue;
-      const { proposals, activeHere } = data;
+      const { proposals } = data;
 
       const slotL = leaf.slotLeft, slotR = leaf.slotRight;
       const slotW = slotR - slotL;
       const childY = depthY(leaf.depth + 1);
 
-      // Sub-slots: divide the parent slot evenly among the active children.
-      const activeChildren = proposals.filter(q => q.kind === 'primary' || q.kind === 'beta');
-      const subW = activeChildren.length > 0 ? slotW / activeChildren.length : slotW;
+      // Order: actives first (preserving score order), then inactives.
+      const actives = proposals.filter(q => q.kind === 'primary' || q.kind === 'beta');
+      const inactives = proposals.filter(q => q.kind === 'invalid' || q.kind === 'pruned');
+      const ordered = [...actives, ...inactives];
 
-      // Assign sub-slot to each active child
-      let activeIdx = 0;
+      // Each slot is a horizontal band of width slotW. We hand the active
+      // children CENTRE positions (so their subtree has room left and right),
+      // and tuck inactives at the edges of the slot.
+      const N = ordered.length;
+      // Active children take an evenly-spaced row across the *inner* 78% of the
+      // slot, so they keep a margin away from cousin subtrees.
+      const innerLeft = slotL + slotW * 0.11;
+      const innerRight = slotR - slotW * 0.11;
+      const innerW = innerRight - innerLeft;
+
+      // Allocate sub-slot widths for actives (these become their own slot
+      // ranges for the next depth).
+      const activeStride = actives.length > 0 ? innerW / actives.length : innerW;
+
       const subSlotFor = new Map();
-      for (const q of proposals) {
-        if (q.kind === 'primary' || q.kind === 'beta') {
-          const subL = slotL + activeIdx * subW;
-          const subR = subL + subW;
-          subSlotFor.set(q, { left: subL, right: subR });
-          activeIdx++;
-        }
+      for (let a = 0; a < actives.length; a++) {
+        const subL = innerLeft + a * activeStride;
+        const subR = subL + activeStride;
+        subSlotFor.set(actives[a], { left: subL, right: subR });
       }
 
-      // Find the primary's sub-slot center — invalid/pruned siblings cluster near it.
-      const primaryProp = proposals.find(q => q.kind === 'primary');
-      const primarySlot = primaryProp ? subSlotFor.get(primaryProp) : null;
-      const primaryCenter = primarySlot
-        ? (primarySlot.left + primarySlot.right) / 2
-        : (slotL + slotR) / 2;
+      // Inactives: place them flanking the active cluster — never out at the
+      // canvas edges (which can be very far when the parent owns a wide slot).
+      // Alternate left-of-cluster, right-of-cluster, then a second row inside.
+      const inactiveBand = Math.min(18, Math.max(11, activeStride * 0.25));
+      const activeLeftmost  = actives.length > 0 ? innerLeft + activeStride * 0.5                       : (slotL + slotR) / 2;
+      const activeRightmost = actives.length > 0 ? innerLeft + activeStride * (actives.length - 0.5)    : (slotL + slotR) / 2;
+      const inactivePositions = [];
+      for (let k = 0; k < inactives.length; k++) {
+        const row = Math.floor(k / 2);                 // 0, 0, 1, 1, ...
+        const side = k % 2 === 0 ? -1 : 1;             // left, right, left, right
+        const offset = inactiveBand * (row + 1);
+        let cx = side < 0
+          ? activeLeftmost - offset
+          : activeRightmost + offset;
+        // Stagger second row slightly lower so they don't sit on top of first.
+        const cy = childY + row * 12;
+        inactivePositions.push({ cx, cy });
+      }
 
-      // Place each candidate
-      let nonActiveOffsetIdx = 0;
-      const nonActiveCount = proposals.filter(q => q.kind === 'invalid' || q.kind === 'pruned').length;
-      for (const q of proposals) {
-        let cx, cy = childY;
-        let nodeSlotL, nodeSlotR;
+      // Now emit nodes and edges
+      let inactiveIdx = 0;
+      for (const q of ordered) {
+        let cx, cy = childY, nodeSlotL, nodeSlotR;
 
         if (q.kind === 'primary' || q.kind === 'beta') {
           const s = subSlotFor.get(q);
           cx = (s.left + s.right) / 2;
           nodeSlotL = s.left; nodeSlotR = s.right;
         } else {
-          // cluster invalid/pruned to the side of the primary, never overlapping subtrees
-          // alternate left/right of primary center within a tight band
-          const band = Math.min(36, Math.max(14, subW * 0.35));
-          const t = (nonActiveOffsetIdx + 1) * 0.5;
-          const side = nonActiveOffsetIdx % 2 === 0 ? 1 : -1;
-          cx = primaryCenter + side * t * band * 1.1;
-          // tuck slightly below to reduce overlap with the primary node visually
-          cy = childY + (nonActiveOffsetIdx > 1 ? 14 : 0);
-          nonActiveOffsetIdx++;
-          // they don't own slots
+          const pos = inactivePositions[inactiveIdx++];
+          cx = pos.cx;
+          cy = pos.cy;
           nodeSlotL = cx - 6; nodeSlotR = cx + 6;
         }
+
+        // Final clamp: never let a node sit outside its parent's slot.
+        const clampPad = 4;
+        if (cx < slotL + clampPad) cx = slotL + clampPad;
+        if (cx > slotR - clampPad) cx = slotR - clampPad;
 
         const node = {
           x: cx, y: cy, depth: leaf.depth + 1,
@@ -263,7 +282,6 @@ new p5((p) => {
       }
     }
 
-    // Keep ordering stable across depths so subtrees stay aligned with their slot.
     activeLeaves = newLeaves.slice(0, KMAX);
 
     if (activeLeaves.length === 0 || activeLeaves[0].depth >= MAX_DEPTH) {
@@ -884,17 +902,31 @@ new p5((p) => {
     p.clear();
     frame++;
 
-    // Parent node
-    p.noStroke();
-    p.fill(34, 197, 94, 40);
-    p.circle(parentNode.x, parentNode.y, 50);
-    p.fill(21, 128, 61);
-    p.circle(parentNode.x, parentNode.y, 18);
-    p.fill(VOLTS_COLORS.muted);
-    p.textFont('JetBrains Mono');
-    p.textSize(10);
-    p.textAlign(p.CENTER, p.CENTER);
-    p.text('s_i', parentNode.x, parentNode.y + 28);
+    // treeFocus: 0 = bars-only view (phases 0..2), 1 = tree-only view (phase 4 advance).
+    // We ramp during phase 3 so the user sees the bars fade out as the tree takes over.
+    let treeFocus = 0;
+    if (stepPhase === 3) treeFocus = Math.min(1, phaseT / PHASES[3]) * 0.85;
+    if (stepPhase === 4) treeFocus = 1;
+    const barsAlpha = 1 - treeFocus;
+
+    // Parent node + bars (left/middle of canvas) — fade out as treeFocus grows.
+    if (barsAlpha > 0.01) {
+      p.drawingContext.globalAlpha = barsAlpha;
+
+      // Parent node
+      p.noStroke();
+      p.fill(34, 197, 94, 40);
+      p.circle(parentNode.x, parentNode.y, 50);
+      p.fill(21, 128, 61);
+      p.circle(parentNode.x, parentNode.y, 18);
+      p.fill(VOLTS_COLORS.muted);
+      p.textFont('JetBrains Mono');
+      p.textSize(10);
+      p.textAlign(p.CENTER, p.CENTER);
+      p.text('s_i', parentNode.x, parentNode.y + 28);
+
+      p.drawingContext.globalAlpha = 1;
+    }
 
     // Top-K bar chart in the middle
     const chartX = W * 0.32;
@@ -919,75 +951,86 @@ new p5((p) => {
       }
     }
 
-    // Title near top
-    p.fill(VOLTS_COLORS.muted);
-    p.textFont('Inter');
-    p.textStyle(p.BOLD);
-    p.textSize(10);
-    p.textAlign(p.LEFT, p.TOP);
-    p.text('TOP-K  CANDIDATES  ·  l_i', chartX, chartY - 22);
+    if (barsAlpha > 0.01) {
+      p.drawingContext.globalAlpha = barsAlpha;
 
-    // Connector lines from parent
-    p.stroke(21, 128, 61, 60);
-    p.strokeWeight(1);
-    for (let i = 0; i < candidates.length; i++) {
-      const cy = chartY + i * (rowH + gap) + rowH / 2;
-      p.line(parentNode.x + 12, parentNode.y, chartX - 6, cy);
-    }
-    p.noStroke();
-
-    // Draw each candidate bar
-    for (let i = 0; i < candidates.length; i++) {
-      const c = candidates[i];
-      const y = chartY + i * (rowH + gap);
-      const kind = stepPhase >= 2 ? c.kind : 'pending';
-      drawBar(chartX, y, chartW, rowH, c.ratio, kind, 1);
-
-      // Ratio label
-      p.fill(VOLTS_COLORS.textSoft);
-      p.textFont('JetBrains Mono');
-      p.textStyle(p.NORMAL);
+      // Title near top
+      p.fill(VOLTS_COLORS.muted);
+      p.textFont('Inter');
+      p.textStyle(p.BOLD);
       p.textSize(10);
-      p.textAlign(p.LEFT, p.CENTER);
-      p.text(c.ratio.toFixed(2), chartX + chartW + 8, y + rowH / 2);
+      p.textAlign(p.LEFT, p.TOP);
+      p.text('TOP-K  CANDIDATES  ·  l_i', chartX, chartY - 22);
 
-      // β indicator
-      if (stepPhase >= 2 && (kind === 'primary' || kind === 'beta')) {
-        const tx = chartX + chartW + 38;
-        p.noStroke();
-        p.fill(kind === 'primary' ? p.color(21, 128, 61) : p.color(217, 119, 6));
-        p.textStyle(p.BOLD);
+      // Connector lines from parent
+      p.stroke(21, 128, 61, 60);
+      p.strokeWeight(1);
+      for (let i = 0; i < candidates.length; i++) {
+        const cy = chartY + i * (rowH + gap) + rowH / 2;
+        p.line(parentNode.x + 12, parentNode.y, chartX - 6, cy);
+      }
+      p.noStroke();
+
+      // Draw each candidate bar
+      for (let i = 0; i < candidates.length; i++) {
+        const c = candidates[i];
+        const y = chartY + i * (rowH + gap);
+        const kind = stepPhase >= 2 ? c.kind : 'pending';
+        drawBar(chartX, y, chartW, rowH, c.ratio, kind, 1);
+
+        // Ratio label
+        p.fill(VOLTS_COLORS.textSoft);
+        p.textFont('JetBrains Mono');
+        p.textStyle(p.NORMAL);
         p.textSize(10);
         p.textAlign(p.LEFT, p.CENTER);
-        p.text(kind === 'primary' ? 'primary' : 'β-branch', tx, y + rowH / 2);
+        p.text(c.ratio.toFixed(2), chartX + chartW + 8, y + rowH / 2);
+
+        // β indicator
+        if (stepPhase >= 2 && (kind === 'primary' || kind === 'beta')) {
+          const tx = chartX + chartW + 38;
+          p.noStroke();
+          p.fill(kind === 'primary' ? p.color(21, 128, 61) : p.color(217, 119, 6));
+          p.textStyle(p.BOLD);
+          p.textSize(10);
+          p.textAlign(p.LEFT, p.CENTER);
+          p.text(kind === 'primary' ? 'primary' : 'β-branch', tx, y + rowH / 2);
+        }
       }
+
+      p.drawingContext.globalAlpha = 1;
     }
 
-    // Right side: a small tree showing new branches being created from s_i.
+    // Tree showing new branches being created from s_i.
     // Shown during stepPhase 3 ("Step 4 · spawn") and 4 ("Step 5 · advance").
+    // As treeFocus grows, the tree slides from the right side toward the centre
+    // and grows in size, since the bars are fading out.
     if (stepPhase >= 3) {
-      const k = Math.min(1, phaseT / PHASES[3]);
+      // k drives the spawn animation. Once we're past phase 3 the spawn is done, so k must stay at 1.
+      const k = stepPhase >= 4 ? 1 : Math.min(1, phaseT / PHASES[3]);
       const advance = stepPhase >= 4 ? Math.min(1, phaseT / PHASES[4]) : 0;
 
       const targets = candidates.filter(c => c.kind === 'primary' || c.kind === 'beta');
-      const treeX = W * 0.83;                  // tree center column
-      const treeTopY = H * 0.22;               // parent node y
-      const treeBotY = H * 0.78;               // first level of children y
-      const fanWidth = Math.min(W * 0.20, 110);
+      // Centre the tree as bars fade out.
+      const treeX = p.lerp(W * 0.83, W * 0.5, treeFocus);
+      const treeTopY = p.lerp(H * 0.22, H * 0.20, treeFocus);
+      const treeBotY = p.lerp(H * 0.78, H * 0.65, treeFocus);
+      const fanWidth = p.lerp(Math.min(W * 0.20, 110), Math.min(W * 0.50, 280), treeFocus);
 
       // Parent (copy of s_i)
+      const parentScale = p.lerp(1.0, 1.5, treeFocus);
       p.noStroke();
       p.fill(34, 197, 94, 40 * k);
-      p.circle(treeX, treeTopY, 36);
+      p.circle(treeX, treeTopY, 36 * parentScale);
       p.fill(21, 128, 61, 255 * k);
-      p.circle(treeX, treeTopY, 14);
+      p.circle(treeX, treeTopY, 14 * parentScale);
       p.fill(VOLTS_COLORS.muted);
       p.textFont('JetBrains Mono');
       p.textStyle(p.NORMAL);
-      p.textSize(10);
+      p.textSize(10 * parentScale);
       p.textAlign(p.CENTER, p.CENTER);
       p.drawingContext.globalAlpha = k;
-      p.text('s_i', treeX, treeTopY + 22);
+      p.text('s_i', treeX, treeTopY + 22 * parentScale);
       p.drawingContext.globalAlpha = 1;
 
       // Layout children evenly in the fan
@@ -1023,7 +1066,8 @@ new p5((p) => {
         // Child node (appears once the line reaches it)
         const childAlpha = Math.max(0, Math.min(1, (k - 0.55) / 0.4));
         if (childAlpha > 0) {
-          const r = c.kind === 'primary' ? 14 : 11;
+          const baseR = c.kind === 'primary' ? 14 : 11;
+          const r = baseR * p.lerp(1.0, 1.5, treeFocus);
           // soft halo
           p.noStroke();
           p.fill(c.kind === 'primary' ? p.color(34, 197, 94, 35 * childAlpha) : p.color(245, 158, 11, 35 * childAlpha));
@@ -1035,10 +1079,10 @@ new p5((p) => {
           p.fill(VOLTS_COLORS.textSoft);
           p.textFont('JetBrains Mono');
           p.textStyle(p.NORMAL);
-          p.textSize(9.5);
+          p.textSize(p.lerp(9.5, 12, treeFocus));
           p.textAlign(p.CENTER, p.TOP);
           p.drawingContext.globalAlpha = childAlpha;
-          p.text(c.kind === 'primary' ? 'primary' : 'β', cxTarget, cyTarget + r + 4);
+          p.text(c.kind === 'primary' ? 'primary' : 'β-branch', cxTarget, cyTarget + r + 4);
           p.drawingContext.globalAlpha = 1;
         }
 
@@ -1048,19 +1092,20 @@ new p5((p) => {
             const pulse = 0.5 + 0.5 * Math.sin(frame * 0.18);
             p.noStroke();
             p.fill(34, 197, 94, 40 + 60 * pulse);
-            p.circle(cxTarget, cyTarget, 36 + 6 * pulse);
+            p.circle(cxTarget, cyTarget, 40 + 8 * pulse + 18 * treeFocus);
           }
         }
       }
 
-      // Caption underneath the tree
+      // Caption underneath the tree — kept well clear of the child labels.
       p.noStroke();
       p.fill(VOLTS_COLORS.muted);
       p.textFont('JetBrains Mono');
       p.textStyle(p.NORMAL);
-      p.textSize(10);
+      p.textSize(p.lerp(10, 12, treeFocus));
       p.textAlign(p.CENTER, p.TOP);
-      p.text(`new branches  ·  |B| ≤ k_max=4`, treeX, treeBotY + 32);
+      const captionY = treeBotY + p.lerp(38, 80, treeFocus);
+      p.text(`new branches  ·  |B| ≤ k_max=4`, treeX, captionY);
     }
 
     // Phase label
