@@ -3,10 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>VOLTS — Validated Output through Logit Tree Search</title>
+<title>VOLTS, Validated Output through Logit Tree Search</title>
 <meta name="description" content="VOLTS: a neuro-symbolic framework that lets a 4-bit Llama 3.1 8B Small Language Model generate provably valid PDDL plans in a single inference pass, through token-level validation and parallel logit-guided tree search." />
 <meta name="theme-color" content="#16a34a" />
-<meta property="og:title" content="VOLTS — Validated Output through Logit Tree Search" />
+<meta property="og:title" content="VOLTS, Validated Output through Logit Tree Search" />
 <meta property="og:description" content="Reliable PDDL planning with Small Language Models." />
 <meta property="og:type" content="article" />
 <link rel="preconnect" href="https://fonts.googleapis.com" />
@@ -431,7 +431,7 @@ footer a:hover{text-decoration:underline}
         Reliable PDDL planning with <span class="grad">Small Language Models</span><span class="accent">.</span>
       </h1>
       <p class="lede">
-        VOLTS &mdash; <strong>V</strong>alidated <strong>O</strong>utput through <strong>L</strong>ogit <strong>T</strong>ree <strong>S</strong>earch &mdash;
+        VOLTS, <strong>V</strong>alidated <strong>O</strong>utput through <strong>L</strong>ogit <strong>T</strong>ree <strong>S</strong>earch,
         couples token-level symbolic validation with parallel logit-guided branching, so a 4-bit Llama&nbsp;3.1&nbsp;8B
         can emit provably valid plans in a single forward pass.
       </p>
@@ -479,7 +479,7 @@ footer a:hover{text-decoration:underline}
     <div class="abstract-card reveal">
       <h3>What the paper shows</h3>
       <p>
-        A single forward pass with a fine-tuned 4-bit Llama 3.1 8B emits syntactically and semantically valid PDDL plans, while respecting tight memory and latency budgets. On 2,000 IPC problems across <strong>Blocksworld</strong>, <strong>Logistics</strong>, <strong>DriverLog</strong> and <strong>Rover</strong>, VOLTS returns valid plans for <strong>76.4%</strong> of tasks, averaging <strong>1.08&times;</strong> the length of Fast Downward solutions &mdash; far ahead of GPT-4o (7.2% validity) and a fine-tuned baseline without in-loop validation (0.13%).
+        A single forward pass with a fine-tuned 4-bit Llama 3.1 8B emits syntactically and semantically valid PDDL plans, while respecting tight memory and latency budgets. On 2,000 IPC problems across <strong>Blocksworld</strong>, <strong>Logistics</strong>, <strong>DriverLog</strong> and <strong>Rover</strong>, VOLTS returns valid plans for <strong>76.4%</strong> of tasks, averaging <strong>1.08&times;</strong> the length of Fast Downward solutions, far ahead of GPT-4o (7.2% validity) and a fine-tuned baseline without in-loop validation (0.13%).
       </p>
     </div>
 
@@ -501,7 +501,7 @@ footer a:hover{text-decoration:underline}
       <div class="idea reveal">
         <div class="num">01</div>
         <h3>Action-token fine-tuning</h3>
-        <p>The SLM is fine-tuned on a custom vocabulary where every token encodes a complete grounded action. This gives the model strong task heuristics without expanding its size &mdash; <em>and</em> makes per-token validation possible.</p>
+        <p>The SLM is fine-tuned on a custom vocabulary where every token encodes a complete grounded action. This gives the model strong task heuristics without expanding its size, <em>and</em> makes per-token validation possible.</p>
       </div>
       <div class="idea reveal">
         <div class="num">02</div>
@@ -511,7 +511,7 @@ footer a:hover{text-decoration:underline}
       <div class="idea reveal">
         <div class="num">03</div>
         <h3>Parallel branching search</h3>
-        <p>When several validated actions look promising, VOLTS explores them in parallel branches within the same forward pass &mdash; preserving single-pass efficiency while widening search, gated by a branching ratio&nbsp;β and a cap&nbsp;k<sub>max</sub>.</p>
+        <p>When several validated actions look promising, VOLTS explores them in parallel branches within the same forward pass, preserving single-pass efficiency while widening search, gated by a branching ratio&nbsp;β and a cap&nbsp;k<sub>max</sub>.</p>
       </div>
     </div>
   </div>
@@ -528,7 +528,7 @@ footer a:hover{text-decoration:underline}
         <span class="step">Step 1 · Vocabulary</span>
         <h3>One token per grounded action.</h3>
         <p>Standard sub-word tokenization fragments PDDL actions across many tokens, making mid-generation validation impossible. VOLTS resizes the embedding layer and LM head over a custom vocabulary where each PDDL action is a single, atomic token.</p>
-        <p>Result: every emitted token is a complete, validatable action &mdash; and the validator can fire after <em>every</em> step.</p>
+        <p>Result: every emitted token is a complete, validatable action, and the validator can fire after <em>every</em> step.</p>
       </div>
       <div class="viz">
         <div class="viz-frame">
@@ -542,7 +542,7 @@ footer a:hover{text-decoration:underline}
       <div class="copy">
         <span class="step">Step 2 · Validation</span>
         <h3>A symbolic check, fast enough to live inside decoding.</h3>
-        <p>A custom Python PDDL grounder checks each candidate action token against the current symbolic state at every decoding step. Invalid candidates are filtered before they can extend a branch &mdash; eliminating hallucinated or infeasible actions by construction.</p>
+        <p>A custom Python PDDL grounder checks each candidate action token against the current symbolic state at every decoding step. Invalid candidates are filtered before they can extend a branch, eliminating hallucinated or infeasible actions by construction.</p>
         <p>The validator is fast enough that it runs <em>inside</em> the generation loop, not as a post-hoc filter.</p>
       </div>
       <div class="viz">
@@ -557,7 +557,7 @@ footer a:hover{text-decoration:underline}
       <div class="copy">
         <span class="step">Step 3 · Search</span>
         <h3>Branch when alternatives are close, prune when they aren't.</h3>
-        <p>For every branch, VOLTS keeps the highest-scoring valid action as the primary continuation. Other valid actions whose logits are within a ratio&nbsp;β&nbsp;=&nbsp;1.15 of the leader spawn new branches &mdash; up to a hard cap k<sub>max</sub>&nbsp;=&nbsp;4.</p>
+        <p>For every branch, VOLTS keeps the highest-scoring valid action as the primary continuation. Other valid actions whose logits are within a ratio&nbsp;β&nbsp;=&nbsp;1.15 of the leader spawn new branches, up to a hard cap k<sub>max</sub>&nbsp;=&nbsp;4.</p>
         <p>All branches are processed in a single batched forward pass, so search widens without iterative LLM calls.</p>
       </div>
       <div class="viz">
@@ -584,7 +584,7 @@ footer a:hover{text-decoration:underline}
       </div>
       <div class="algo-step reveal">
         <div class="n">4</div>
-        <div><h4>Dynamic branch spawning</h4><p>For every other valid action whose score is within ratio <code>β</code> of the leader, spawn a new branch &mdash; provided <code>|B| &lt; k<sub>max</sub></code>.</p></div>
+        <div><h4>Dynamic branch spawning</h4><p>For every other valid action whose score is within ratio <code>β</code> of the leader, spawn a new branch, provided <code>|B| &lt; k<sub>max</sub></code>.</p></div>
       </div>
       <div class="algo-step reveal">
         <div class="n">5</div>
@@ -598,7 +598,7 @@ footer a:hover{text-decoration:underline}
   <div class="wrap">
     <span class="section-tag reveal">Results</span>
     <h2 class="reveal">An SLM that beats frontier LLMs on validity.</h2>
-    <p class="lead reveal">Evaluated on 2,000 problems across Blocksworld, Logistics, DriverLog and Rover, VOLTS dominates every neural baseline &mdash; including a frontier reasoning model and an identically fine-tuned ablation.</p>
+    <p class="lead reveal">Evaluated on 2,000 problems across Blocksworld, Logistics, DriverLog and Rover, VOLTS dominates every neural baseline, including a frontier reasoning model and an identically fine-tuned ablation.</p>
 
     <div class="results-grid">
       <div class="chart-frame reveal">
@@ -634,7 +634,7 @@ footer a:hover{text-decoration:underline}
           <div class="ico">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="20 6 9 17 4 12"/></svg>
           </div>
-          <div><h4>10&times; ahead of GPT-4o on validity</h4><p>76.4% vs 7.2% &mdash; despite using a model two orders of magnitude smaller.</p></div>
+          <div><h4>10&times; ahead of GPT-4o on validity</h4><p>76.4% vs 7.2%, despite using a model two orders of magnitude smaller.</p></div>
         </div>
         <div class="takeaway reveal">
           <div class="ico">
@@ -646,13 +646,13 @@ footer a:hover{text-decoration:underline}
           <div class="ico">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 1 1-6.219-8.56"/><polyline points="21 4 21 9 16 9"/></svg>
           </div>
-          <div><h4>The search matters, not just the tuning</h4><p>An identically fine-tuned SLM without VOLTS scored 0.13% &mdash; fine-tuning alone is not enough.</p></div>
+          <div><h4>The search matters, not just the tuning</h4><p>An identically fine-tuned SLM without VOLTS scored 0.13%, fine-tuning alone is not enough.</p></div>
         </div>
         <div class="takeaway reveal">
           <div class="ico">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><rect x="3" y="3" width="18" height="18" rx="3"/><path d="M9 9h6v6H9z"/></svg>
           </div>
-          <div><h4>Runs on a single RTX 4090</h4><p>4-bit quantization plus LoRA/PiSSA fits the whole stack in 24&nbsp;GB VRAM &mdash; on-device planning is viable.</p></div>
+          <div><h4>Runs on a single RTX 4090</h4><p>4-bit quantization plus LoRA/PiSSA fits the whole stack in 24&nbsp;GB VRAM, on-device planning is viable.</p></div>
         </div>
       </div>
     </div>
@@ -690,7 +690,7 @@ footer a:hover{text-decoration:underline}
     <p>VOLTS &middot; Validated Output through Logit Tree Search.
        By <a href="https://www.linkedin.com/in/nicholas-massad/" target="_blank" rel="noopener">Nicholas Massad</a>.
        Source on <a href="https://github.com/R3CK0/Volts" target="_blank" rel="noopener">GitHub</a>.
-       Page styled with hand-tuned p5.js sketches &mdash; reload for a new seed.</p>
+       Page styled with hand-tuned p5.js sketches, reload for a new seed.</p>
   </div>
 </footer>
 
